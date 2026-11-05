@@ -1,40 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-从「金句池1000条.json」随机抽 N 条，生成 RSS 2.0 XML。
-同时兼容 Dashy rss-feed 与通用 RSS 阅读器（Fluent Reader / Feedly 等）。
+从「金句池1000条.json」随机抽 N 条，生成一份干净的 RSS 2.0 XML。
+同时兼容 Dashy rss-feed 与通用 RSS 阅读器。
 
 用法：
-    python3 生成feed.py                    # 默认抽 1 条，guid 按金句 id
-    python3 生成feed.py --n 5              # 抽 5 条
-    python3 生成feed.py --seed 42          # 固定随机种子（复现同一批，一般不用）
-    python3 生成feed.py --guid-mode fixed  # 固定 guid，阅读器里永远只有 1 条
-    python3 生成feed.py --guid-mode none   # 回到旧行为：不写 guid / pubDate（仅供 Dashy）
-    python3 生成feed.py --no-date          # 写 guid 但不写 pubDate
+    python3 生成feed.py                       # 默认：抽 1 条，写 guid，不写 pubDate
+    python3 生成feed.py --n 5                 # 抽 5 条
+    python3 生成feed.py --seed 42             # 固定随机种子，复现同一批
+    python3 生成feed.py --guid-mode fixed     # 阅读器里永远只保留 1 条
+    python3 生成feed.py --with-date           # 额外写 pubDate（Dashy 会显示日期，一般不推荐）
+    python3 生成feed.py --with-link           # 为每条写入 link（Dashy 会多一个按钮）
 
-为什么必须有 guid（重要）：
-    RSS 阅读器靠 <guid> 给条目去重。之前只有 1 个 <item> 且没写 guid / link /
-    pubDate，阅读器每次抓取都把同一句当成「新文章」插进本地库，结果就是刷出
-    十几张一模一样的卡片、时间全显示 now。Dashy 的 widget 每次拉一次覆盖渲染、
-    没有历史库，所以不受影响 —— 这是通用阅读器才暴露出来的问题。
+两个关键取舍：
 
-guid 两种模式的取舍：
-    by-id  (默认) guid = jinju-rss-quote-0473：同一句无论抓多少次只入库一次，
-                   换一句才新增一条，形成不重复的历史金句流。最稳，不依赖
-                   阅读器是否实现了「同 guid 更新内容」。
-    fixed       guid = jinju-rss-quote-current：阅读器里永远只有 1 条，内容随
-                   抓取更新，最贴近「只显示 1 条」的初衷。但少数阅读器不实现
-                   upsert，可能一直停在旧句子 —— 遇到这种情况改用 by-id。
-                   fixed 模式请配合 --n 1。
+1) 默认不写 <item><pubDate>
+   Dashy 的 RssFeed.vue 会把 pubDate 交给 formatDate()，用
+   toLocaleDateString(..., {weekday:'short', day:'numeric', month:'short'})
+   渲染成「11月5日周四」这种小字。用户明确不要这行，所以从源头去掉，
+   不依赖 CSS 兜底。想要阅读器显示真实时间时才用 --with-date。
 
-其他设计要点（对应 Dashy RssFeed.vue 的本地解析器）：
-  - <pubDate> 只影响阅读器显示时间和去重辅助；parseLocally 下它不参与排序。
-    Dashy 会多渲染一行日期，用 customCss 隐藏 .post-date 即可。
-  - 不写 <item><link>：组件会渲染成 div 而非 a，也不会生成「打开链接」按钮，
-    widget 里只剩「一行金句 + 一行小字出处」；加 --with-link 可写仓库链接。
-  - 出处放在 <description>，由 post-body 以小字渲染；池子若带 tag 字段则
-    额外显示〔分级〕，不带也不影响（用 .get 兼容两种池子）。
-  - Dashy 的 RssParser.js 不读取 <guid>，加这个字段对它零影响。
+2) 默认写 <item><guid isPermaLink="false">
+   RSS 阅读器靠 guid 去重。没有它（且没有 link / pubDate）时，每次抓取
+   都会被当成新文章，攒出一堆一模一样的卡片。guid 取自金句编号，稳定唯一。
+   Dashy 的 RssParser.js 根本不读 guid，所以对 widget 零影响。
+
+其他：
+  - channel 的 lastBuildDate 是源级元信息，RssParser.js 不读，不影响 Dashy 显示。
+  - <description> 放「—— 出处」小字；池子若带 tag 字段会额外显示〔分级〕，
+    用 .get 兼容精简池子（当前池子只有 id / text / source）。
   - 默认避开上一次抽中的条目，保证每跑一次一定换一条。
 """
 
@@ -63,7 +57,7 @@ def render_xml(root: ET.Element) -> str:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
 
-def build(n: int, seed=None, guid_mode="by-id", no_date=False, with_link=False) -> None:
+def build(n: int, seed=None, guid_mode="by-id", with_date=False, with_link=False) -> None:
     pool = json.loads(POOL_FILE.read_text(encoding="utf-8"))
     rnd = random.Random(seed)
 
@@ -82,8 +76,7 @@ def build(n: int, seed=None, guid_mode="by-id", no_date=False, with_link=False) 
     ET.SubElement(ch, "language").text = "zh-CN"
     ET.SubElement(ch, "lastBuildDate").text = format_datetime(datetime.now(timezone.utc))
 
-    write_date = guid_mode != "none" and not no_date
-    now = format_datetime(datetime.now(timezone.utc)) if write_date else ""
+    now = format_datetime(datetime.now(timezone.utc)) if with_date else ""
     for q in picked:
         item = ET.SubElement(ch, "item")
         ET.SubElement(item, "title").text = q["text"]
@@ -91,7 +84,8 @@ def build(n: int, seed=None, guid_mode="by-id", no_date=False, with_link=False) 
         suffix = f" 〔{tag}〕" if tag else ""
         ET.SubElement(item, "description").text = f"—— {q['source']}{suffix}"
 
-        # 关键：稳定且唯一的条目标识，供 RSS 阅读器去重
+        # 稳定唯一标识，供 RSS 阅读器去重。isPermaLink="false" 必须声明，
+        # 否则部分阅读器会把 guid 当 URL 打开。
         if guid_mode == "by-id":
             guid = f"{GUID_PREFIX}{q['id']:04d}"
         elif guid_mode == "fixed":
@@ -103,13 +97,15 @@ def build(n: int, seed=None, guid_mode="by-id", no_date=False, with_link=False) 
 
         if with_link:
             ET.SubElement(item, "link").text = FEED_LINK
-        if write_date:
+        # 默认不写 pubDate —— Dashy 不会显示日期
+        if with_date:
             ET.SubElement(item, "pubDate").text = now
 
     OUT_FILE.write_text(render_xml(rss) + "\n", encoding="utf-8")
     LAST_FILE.write_text(str(picked[0]["id"]), encoding="utf-8")
 
-    print(f"[ok] 已写入 {OUT_FILE}  抽取 {len(picked)} / {len(pool)} 条  guid={guid_mode}  pubDate={'有' if write_date else '无'}")
+    print(f"[ok] 已写入 {OUT_FILE}  抽取 {len(picked)} / {len(pool)} 条  "
+          f"guid={guid_mode}  pubDate={'有' if with_date else '无（Dashy 不显示日期）'}")
     for q in picked:
         tag = q.get("tag", "")
         mark = f" 〔{tag}〕" if tag else " "
@@ -122,13 +118,15 @@ if __name__ == "__main__":
     ap.add_argument("--seed", type=int, default=None, help="固定随机种子，默认不固定")
     ap.add_argument(
         "--guid-mode", choices=["by-id", "fixed", "none"], default="by-id",
-        help="by-id(默认)=每句只入库一次；fixed=永远只 1 条；none=旧行为仅供 Dashy",
+        help="by-id(默认)=每句只入库一次；fixed=永远只 1 条；none=不写 guid（会重复，别用）",
     )
-    ap.add_argument("--no-date", action="store_true", help="不写 pubDate（应对把时间算进去重指纹的阅读器）")
-    ap.add_argument("--with-link", action="store_true", help="为每条写入 link")
+    ap.add_argument("--with-date", action="store_true",
+                    help="写入 item/pubDate；Dashy 会渲染出日期，默认关闭")
+    ap.add_argument("--with-link", action="store_true",
+                    help="写入 item/link；Dashy 会多一个「打开链接」按钮，默认关闭")
     args = ap.parse_args()
     if args.n < 1:
         ap.error("--n 至少为 1")
     if args.guid_mode == "fixed" and args.n > 1:
         print("[warn] fixed 模式下多条 item 共用同一 guid，阅读器会去重成 1 条；建议配合 --n 1")
-    build(args.n, args.seed, args.guid_mode, args.no_date, args.with_link)
+    build(args.n, args.seed, args.guid_mode, args.with_date, args.with_link)
