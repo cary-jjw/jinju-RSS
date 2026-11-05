@@ -1,11 +1,21 @@
-# re-register schedule
+# 纯 GitHub 自动方案：每小时只需被调度 1 次，job 内每 5 分钟换一句
+# 覆盖路径：.github/workflows/shuffle.yml
 name: shuffle-quote
 on:
+  # 每小时第 7 分钟触发，避开整点高峰（比 */5 更容易被排上）
   schedule:
-    - cron: '2-57/5 * * * *'
+    - cron: '7 * * * *'
+  # 保留手动按钮，随时可点
   workflow_dispatch:
+
 permissions:
   contents: write
+
+# 防止上一轮未结束时与新一轮撞车（push 冲突）
+concurrency:
+  group: shuffle-quote
+  cancel-in-progress: true
+
 jobs:
   shuffle:
     runs-on: ubuntu-latest
@@ -14,9 +24,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python3 生成feed.py
-      - run: |
+      - name: 每小时跑一轮，每 5 分钟换一条（共 12 次）
+        run: |
           git config user.name "quote-bot"
           git config user.email "quote-bot@users.noreply.github.com"
-          git add feed.xml
-          git diff --quiet --cached || (git commit -m "chore: shuffle quote" && git push)
+          for i in $(seq 1 12); do
+            echo "=== 第 $i 次生成（$(date -u '+%H:%M:%S') UTC）==="
+            python3 生成feed.py
+            git add feed.xml
+            git diff --quiet --cached || (git commit -m "chore: shuffle quote" && git push)
+            if [ "$i" -lt 12 ]; then sleep 300; fi
+          done
