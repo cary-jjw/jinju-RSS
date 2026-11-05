@@ -13,7 +13,8 @@
     加 --with-date 可写入生成时刻（parseLocally 下它也不参与排序）。
   - 不写 <item><link>：组件会渲染成 div 而非 a，也不会生成「打开链接」按钮，
     widget 里只剩「一行金句 + 一行小字出处」，最干净；加 --with-link 可写仓库链接。
-  - 出处与分级放在 <description>，由 post-body 以小字渲染。
+  - 出处放在 <description>，由 post-body 以小字渲染；池子若带 tag 字段则
+    额外显示〔分级〕，不带也不影响（用 .get 兼容两种池子）。
   - 默认避开上一次抽中的条目，保证每跑一次一定换一条。
 """
 
@@ -31,7 +32,7 @@ OUT_FILE = BASE / "feed.xml"
 LAST_FILE = BASE / ".last_id"
 
 FEED_TITLE = "一句 · 旷野与自由"
-FEED_LINK = "https://github.com/你的用户名/你的仓库"
+FEED_LINK = "https://github.com/cary-jjw/jinju-RSS/tree/main"
 
 
 def esc_free_xml(root: ET.Element) -> str:
@@ -61,7 +62,9 @@ def build(n: int, seed=None, with_date=False, with_link=False) -> None:
     for q in picked:
         item = ET.SubElement(ch, "item")
         ET.SubElement(item, "title").text = q["text"]
-        ET.SubElement(item, "description").text = f"—— {q['source']} 〔{q['tag']}〕"
+        tag = q.get("tag", "")
+        suffix = f" 〔{tag}〕" if tag else ""
+        ET.SubElement(item, "description").text = f"—— {q['source']}{suffix}"
         if with_link:
             ET.SubElement(item, "link").text = FEED_LINK
         if with_date:
@@ -72,7 +75,9 @@ def build(n: int, seed=None, with_date=False, with_link=False) -> None:
 
     print(f"[ok] 已写入 {OUT_FILE}  抽取 {len(picked)} / {len(pool)} 条")
     for q in picked:
-        print(f"  #{q['id']:04d} 〔{q['tag']}〕{q['text']}  —— {q['source']}")
+        tag = q.get("tag", "")
+        mark = f" 〔{tag}〕" if tag else " "
+        print(f"  #{q['id']:04d}{mark}{q['text']}  —— {q['source']}")
 
 
 if __name__ == "__main__":
