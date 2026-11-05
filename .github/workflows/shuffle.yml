@@ -1,3 +1,4 @@
+# re-register schedule
 name: shuffle-quote
 on:
   schedule:
