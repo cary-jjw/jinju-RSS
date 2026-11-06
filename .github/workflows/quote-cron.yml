@@ -1,0 +1,31 @@
+# 上传路径：.github/workflows/quote-cron.yml
+# ⚠️ 文件名和 name 都必须是全新的，不要用 shuffle.yml
+#    目的：强制 GitHub 生成一个新的 workflow 对象 / 新的调度注册，
+#          原来那个 id=408141965 的注册记录从 11-05 起就卡死没更新过。
+
+name: jinju-quote-auto
+
+on:
+  schedule:
+    # 每小时 12 个错峰刻度：:02 :07 :12 ... :57（分钟不受时区影响）
+    - cron: '2-57/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  shuffle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 抽一条并推送
+        run: |
+          git config user.name "quote-bot"
+          git config user.email "quote-bot@users.noreply.github.com"
+          python3 生成feed.py
+          git add feed.xml
+          git diff --quiet --cached || (git commit -m "chore: shuffle quote" && git push)
