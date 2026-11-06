@@ -1,11 +1,11 @@
-# 覆盖路径：.github/workflows/shuffle.yml
-# 每小时 2 次（:07 / :37），每次只换一句，无 sleep 长循环
 name: shuffle-quote
+
 on:
+  # 唯一在这个仓库实测排上过队的表达式：每小时第 7 分（UTC）
+  # 不用逗号枚举、不用 */5 —— 那两种在你们仓库 0 次触发
   schedule:
-    # 逗号=枚举：每小时第 7 分、第 37 分各一次，间隔 30 分钟，避开 :00/:30 高峰
-    - cron: '7,37 * * * *'
-  # 保留手动按钮，想立刻换一句随时可点
+    - cron: '7 * * * *'
+  # 手动按钮必须保留，随时能点
   workflow_dispatch:
 
 permissions:
