@@ -1,14 +1,16 @@
+# 覆盖路径：.github/workflows/shuffle.yml
+# 每小时 2 次（:07 / :37），每次只换一句，无 sleep 长循环
 name: shuffle-quote
 on:
   schedule:
-    # 每小时 12 个错峰刻度，避开整点高峰；每个刻度是独立触发机会
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+    # 逗号=枚举：每小时第 7 分、第 37 分各一次，间隔 30 分钟，避开 :00/:30 高峰
+    - cron: '7,37 * * * *'
+  # 保留手动按钮，想立刻换一句随时可点
   workflow_dispatch:
+
 permissions:
   contents: write
-concurrency:
-  group: shuffle-quote
-  cancel-in-progress: false      # 排队，不取消；短 job 不会堆积
+
 jobs:
   shuffle:
     runs-on: ubuntu-latest
@@ -17,7 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: |
+      - name: 抽一条并推送
+        run: |
           git config user.name "quote-bot"
           git config user.email "quote-bot@users.noreply.github.com"
           python3 生成feed.py
